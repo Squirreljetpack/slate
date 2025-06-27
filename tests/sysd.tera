@@ -1,0 +1,57 @@
+git_obsidian:
+    Unit:
+        Description: "Syncs Obsidian"
+        {# Requires=, Wants=, Before=, After=, Conflicts=, Condition...= #}
+    Service:
+        ExecStart: /bin/zsh -c "$Zdir/subshell/cron.sh; $SSdir/git_obsidian.zsh;"
+    Timer:
+        OnCalendar: "*:7/15"
+    {#  #}
+
+{% set messages = ["msg1", "msg2", "msg3", "msg4", "msg5", "msg6"] %}
+
+{% set execstarts = [] %}
+{% for msg in messages %}
+  {% set_global execstarts = execstarts | concat(with=['/bin/zsh -c "$Zdir/subshell/cron.sh; notify -s -- ' ~ msg ~ '"']) %}
+{% endfor %}
+
+{% set descriptions = ["1", "2", "3", "4", "5", "6"] %}
+{% set oncalendars = [
+    "*-*-* 23:00,23:20",
+    "*-*-* 23:40",
+    "*-*-* 00,01,02,03,04:00:00",
+    "*-*-* 00,01,02,03,04:30:00",
+    "*-*-* 00,01,02,03,04:15:00",
+    "*-*-* 00,01,02,03,04:45:00"
+] %}
+
+{% for i in range(start=0, end=6) %}
+remind_journal_{{ i }}:
+    Unit:
+        Description: "{{- descriptions[i] -}}"
+    Service:
+        ExecStart: '{{- execstarts[i] | safe -}}'
+    Timer:
+        OnCalendar: "{{- oncalendars[i] -}}"
+{% endfor %}
+
+
+startup_server:
+    Unit:
+        Description: "Caddy start"
+        After: network-online.target
+        Wants: network-online.target systemd-networkd-wait-online.service
+    Service:
+        Type: Exec
+        ExecStart: caddy start --config docker/caddy/Caddyfile
+        Restart: on-failure
+    Install:
+        WantedBy: multi-user.target
+
+make_playlist:
+    Unit:
+        Description: "Journal reminder"
+    Service:
+        ExecStart: $SSdir/folder2playlist $HOME/.local/share/osu/files --copy ~/Music/ncmpcpp/osu -o $HOME/Music/ncmpcpp/osu/osu.m3u --multi
+    Timer:
+        OnUnitActiveSec: "1w"

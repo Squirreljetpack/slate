@@ -1,0 +1,5 @@
+---
+source: tests/systemd_tests.rs
+expression: service_content
+---
+"[Unit]\nDescription=Syncs Obsidian\n\n[Service]\nExecStart=/bin/zsh -c '$Zdir/subshell/cron.sh; $SSdir/git_obsidian.zsh;'\nType=oneshot\nStandardOutput=journal\nStandardError=journal"

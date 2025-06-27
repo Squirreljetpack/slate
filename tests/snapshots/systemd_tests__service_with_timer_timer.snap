@@ -1,0 +1,5 @@
+---
+source: tests/systemd_tests.rs
+expression: timer_content
+---
+"[Unit]\nDescription=Timer for git_obsidian\n\n[Timer]\nOnCalendar=*:7/15\nUnit=git_obsidian.service\n\n[Install]\nWantedBy=timers.target"

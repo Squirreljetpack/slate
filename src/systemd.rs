@@ -1,7 +1,11 @@
-use anyhow::{Result};
+use anyhow::{bail, Ok, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap};
+use std::{
+    collections::HashMap, fs, io::{stdin, Read}, path::PathBuf, process::Command
+};
+use log::{error,info};
+
 
 pub type Section = IndexMap<String, String>;
 
@@ -12,6 +16,99 @@ pub struct UnitFile(pub IndexMap<String, Section>);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SystemdUnits(pub HashMap<String, UnitFile>);
+
+extern "C" {
+    fn geteuid() -> u32;
+}
+
+fn systemctl_cmd(is_root: bool) -> Command {
+    let mut cmd = Command::new("systemctl");
+    if !is_root {
+        cmd.arg("--user");
+    }
+    cmd
+}
+
+pub fn activate_units(written_files: Vec<PathBuf>) -> anyhow::Result<()> {
+
+    info!("Verifying systemd units");
+    let mut failed_files = Vec::new();
+    for file in &written_files {
+        let status = Command::new("systemd-analyze")
+            .arg("verify")
+            .arg(file)
+            .status()?;
+
+        if !status.success() {
+            error!("Verification failed for {}", file.display());
+            failed_files.push(file);
+        }
+    }
+
+    if !failed_files.is_empty() {
+        info!("One or more unit files failed verification.");
+
+        // Prompt to delete failed files
+        info!("Delete the failed files? [y/N]");
+        let mut del_buffer = [0; 1];
+        stdin().read_exact(&mut del_buffer)?;
+
+        if del_buffer[0] == b'y' || del_buffer[0] == b'Y' {
+            for file in &failed_files {
+                if let Err(e) = fs::remove_file(file) {
+                    error!("Failed to delete {}: {}", file.display(), e);
+                } else {
+                    info!("Deleted {}", file.display());
+                }
+            }
+        } else {
+            info!("Failed files were not deleted.");
+        }
+
+        info!("Skipping activation due to invalid files.");
+        return Ok(());
+    }
+    info!("All units passed!");
+        
+    println!("Activate the new service files? (Ensure your files have been created in the correct directories!) [y/N]: ");
+    let mut buffer = [0; 1];
+    stdin().read_exact(&mut buffer)?;
+
+    if buffer[0] == b'y' || buffer[0] == b'Y' {
+        
+        let is_root = unsafe { geteuid() == 0 };
+
+        systemctl_cmd(is_root).arg("daemon-reload").status()?;
+
+        for file in &written_files {
+
+            let file_name = file.file_name().unwrap().to_str().unwrap();
+
+            if file_name.ends_with(".timer") {
+                systemctl_cmd(is_root)
+                    .args(["enable", "--now", file_name])
+                    .status()?;
+            } else if file_name.ends_with(".service") {
+                let service_base = file_name.strip_suffix(".service").unwrap();
+                let timer_exists = written_files.iter().any(|f| {
+                    f.file_name()
+                        .unwrap()
+                        .to_str()
+                        .map(|n| n == format!("{}.timer", service_base))
+                        .unwrap_or(false)
+                });
+
+                if !timer_exists {
+                    systemctl_cmd(is_root)
+                        .args(["enable", "--now", file_name])
+                        .status()?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
 
 pub fn process_systemd_configs(configs: SystemdUnits) -> Result<SystemdUnits> {
     let mut output_units: HashMap<String, UnitFile> = HashMap::new();

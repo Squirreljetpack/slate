@@ -54,11 +54,12 @@ pub fn write_files<T, S>(
     units: HashMap<String, T>,
     output_dir: &PathBuf,
     serializer: S,
-) -> Result<()>
+) -> Result<Vec<PathBuf>>
 where
     T: Serialize,
     S: Fn(&T) -> Result<String>,
 {
+    let mut written_files = Vec::new();
     for (filename, unit) in units {
         let string_content =
             serializer(&unit).with_context(|| format!("Failed to serialize unit: {}", filename))?;
@@ -67,9 +68,10 @@ where
 
         fs::write(&file_path, string_content)
             .with_context(|| format!("Failed to write to file: {:?}", file_path))?;
+        written_files.push(file_path);
     }
 
-    Ok(())
+    Ok(written_files)
 }
 
 pub fn print_files<T, S>(units: HashMap<String, T>, serializer: S) -> Result<()> 
@@ -89,4 +91,14 @@ where
     }
 
     Ok(())
+}
+
+pub fn is_interactive() -> bool {
+    if let Ok(file) = fs::OpenOptions::new().read(true).open("/dev/tty") {
+        let metadata = file.metadata().unwrap();
+        let permissions = metadata.permissions();
+        std::os::unix::fs::PermissionsExt::mode(&permissions) & 0o222 != 0
+    } else {
+        false
+    }
 }

@@ -1,3 +1,8 @@
+{# The following is an example config for creating systemd files with yaml #}
+{# The Timer section is specially handled to map all fields except description to the Timer section of corresponding timer file for the defined service #}
+{# The following command will install and enable them as user services for you: slate sysd.tera -f yaml -t systemd -o $HOME/.config/systemd/user/ #}
+
+{# Create a basic timer #}
 git_obsidian:
     Unit:
         Description: "Syncs Obsidian"
@@ -6,8 +11,9 @@ git_obsidian:
         ExecStart: /bin/zsh -c "$Zdir/subshell/cron.sh; $SSdir/git_obsidian.zsh;"
     Timer:
         OnCalendar: "*:7/15"
-    {#  #}
 
+
+{# Create multiple timers #}
 {% set messages = ["msg1", "msg2", "msg3", "msg4", "msg5", "msg6"] %}
 
 {% set execstarts = [] %}
@@ -36,6 +42,17 @@ remind_journal_{{ i }}:
 {% endfor %}
 
 
+{# Create a recurring timer #}
+make_playlist:
+    Unit:
+        Description: "Journal reminder"
+    Service:
+        ExecStart: 'zsh -c "$SSdir/folder2playlist $HOME/.local/share/osu/files --copy ~/Music/ncmpcpp/osu -o $HOME/Music/ncmpcpp/osu/osu.m3u --multi"'
+    Timer:
+        OnUnitActiveSec: "1w"
+
+
+{# Create a (user) startup service #}
 startup_server:
     Unit:
         Description: "Caddy start"
@@ -46,12 +63,4 @@ startup_server:
         ExecStart: caddy start --config docker/caddy/Caddyfile
         Restart: on-failure
     Install:
-        WantedBy: multi-user.target
-
-make_playlist:
-    Unit:
-        Description: "Journal reminder"
-    Service:
-        ExecStart: $SSdir/folder2playlist $HOME/.local/share/osu/files --copy ~/Music/ncmpcpp/osu -o $HOME/Music/ncmpcpp/osu/osu.m3u --multi
-    Timer:
-        OnUnitActiveSec: "1w"
+        WantedBy: default.target

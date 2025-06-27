@@ -1,6 +1,5 @@
-use anyhow::{anyhow, Result};
-use clap::{Parser, ValueEnum};
-use erased_serde;
+use env_logger::Builder;
+use log::LevelFilter;
 use serde::de::DeserializeOwned;
 use std::{
     io::{stdin, stdout, Read, Write},
@@ -10,16 +9,20 @@ use std::{
 use tera::Tera;
 
 pub mod systemd;
-use systemd::{process_systemd_configs, SystemdUnits};
+use systemd::{activate_units, process_systemd_configs, SystemdUnits};
 
 pub mod utils;
-use utils::{print_files, write_files};
+use utils::{is_interactive, print_files, write_files};
 
+use anyhow::{anyhow, Result};
+use clap::{Parser, ValueEnum};
 #[derive(Parser, Debug)]
 #[clap(name = "yamlaters", version = "0.1.0", author = "squirreljetpack")]
 pub struct Opts {
     #[clap(flatten)]
     pub file_cmd: FileCmd,
+    #[clap(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 #[derive(Parser, Debug)]
@@ -35,8 +38,6 @@ pub struct FileCmd {
     pub to: Option<ToVariant>,
     #[clap(long)]
     pub tera: bool,
-    #[clap(short, long)]
-    pub verbose: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -152,7 +153,6 @@ pub enum ToVariant {
     Quadlet,
 }
 
-
 impl ToVariant {
     fn from_path(path: &PathBuf) -> Option<Self> {
         let p = path.extension()?.to_str()?;
@@ -210,7 +210,7 @@ pub fn run(opts: Opts) -> Result<()> {
     let to = file_cmd.to;
     let output = file_cmd.output;
     let tera_enabled = file_cmd.tera;
-    let verbose_enabled = file_cmd.verbose;
+    let verbose_enabled = opts.verbose > 0;
 
     let from_variant: FromVariant;
     let mut input_bytes = Vec::new();
@@ -237,7 +237,7 @@ pub fn run(opts: Opts) -> Result<()> {
 
     if tera_enabled {
         let input_str = str::from_utf8(&input_bytes)?;
-        let context= tera::Context::new();
+        let context = tera::Context::new();
         let rendered = Tera::one_off(input_str, &context, true)?;
         if verbose_enabled {
             println!("# Tera output");
@@ -261,7 +261,10 @@ pub fn run(opts: Opts) -> Result<()> {
         let processed_units = process_systemd_configs(units)?;
 
         if let Some(output_dir) = output {
-            write_files(processed_units.0, &output_dir, utils::to_ini_string)?;
+            let files = write_files(processed_units.0, &output_dir, utils::to_ini_string)?;
+            if is_interactive() {
+                activate_units(files)?;
+            }
         } else {
             print_files(processed_units.0, utils::to_ini_string)?;
         }
@@ -286,6 +289,18 @@ pub fn run(opts: Opts) -> Result<()> {
 
 fn main() {
     let opts = Opts::parse();
+
+    let mut builder = Builder::from_default_env();
+
+    let log_level = match opts.verbose {
+        0 => LevelFilter::Error,
+        1 => LevelFilter::Info,
+        2 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
+    };
+
+    builder.filter(None, log_level).init();
+
     if let Err(e) = run(opts) {
         eprintln!("Error: {}", e);
         std::process::exit(1);

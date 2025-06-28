@@ -1,0 +1,16 @@
+# slate sysd.tera compose.yaml -t quadlet -o outputs
+
+services:
+  dufs:
+    image: docker.io/sigoden/dufs
+    ports:
+      - "127.0.0.1:11001:5000"
+    volumes:
+      - ../:/gateway
+      - ${SHAREDIR}:/gateway/SHARED
+      - ${HOME}:/gateway/admin
+      - ${PROJECTDIR}/assets:/assets
+    # https://github.com/sigoden/dufs/pull/521
+    command: /gateway --allow-upload --allow-delete  --allow-search -a ${ADMIN}:${ADMINPASS}@/:rw,/admin:rw,/SHARED:rw -a @/SHARED:rw,${SHAREDPATHS} --hidden '.*'
+    restart: always
+    env_file: ./exports.env

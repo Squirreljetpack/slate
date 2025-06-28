@@ -1,0 +1,13 @@
+services:
+    kavita:
+        image: jvmilazz0/kavita:latest
+        volumes:
+            - /ARCHIVE/FILES/EBOOKS:/EBOOKS
+            - ${HOME}/Documents/MAGAZINES:/MAGAZINES
+            - ${HOME}/Documents/TEXTBOOKS:/TEXTBOOKS
+            - ./data:/kavita/config
+        ports:
+            - "127.0.0.1:11000:5000"
+        restart: always
+        env_file:
+            - ./exports.env

@@ -9,15 +9,24 @@ use std::{
 use tera::Tera;
 
 pub mod systemd;
-use systemd::{activate_units, process_systemd_configs, SystemdUnits};
+use systemd::{activate_units, process_systemd};
 
 pub mod utils;
 use utils::{is_interactive, print_files, write_files};
 
+pub mod formats;
+
+pub mod quadlet;
+use quadlet::{process_compose, process_quadlets, activate_quadlets};
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
+
+use crate::{formats::IniFiles, quadlet::{get_raw_quadlets, ComposeFile}, utils::ask_confirm};
+use tempfile::Builder as TempFileBuilder;
+
 #[derive(Parser, Debug)]
-#[clap(name = "yamlaters", version = "0.1.0", author = "squirreljetpack")]
+#[clap(name = "slate", version = "0.1.0", author = "squirreljetpack")]
 pub struct Opts {
     #[clap(flatten)]
     pub file_cmd: FileCmd,
@@ -26,7 +35,7 @@ pub struct Opts {
 }
 
 #[derive(Parser, Debug)]
-#[clap(name = "yamlaters")]
+#[clap(name = "slate")]
 pub struct FileCmd {
     // if no input is given, then switch to console mode
     pub input: Option<PathBuf>,
@@ -149,6 +158,7 @@ pub enum ToVariant {
     PrettyRon,
     Toml,
     Bson,
+    Ini,
     Systemd,
     Quadlet,
 }
@@ -169,8 +179,7 @@ impl ToVariant {
             "ron" => Some(Self::Ron),
             "hron" => Some(Self::PrettyRon),
             "toml" => Some(Self::Toml),
-            "service" | "unit" => Some(Self::Systemd),
-            "pod" => Some(Self::Quadlet),
+            "ini" => Some(Self::Ini),
             _ => None,
         }
     }
@@ -195,7 +204,7 @@ impl ToVariant {
             }
             ToVariant::Toml => toml::to_string(&obj).unwrap().into_bytes(),
             ToVariant::Bson => bson::to_vec(&obj).unwrap(),
-
+            ToVariant::Ini => serde_ini::to_vec(&obj).unwrap(),
             _ => {
                 panic!("Special variants have custom handling.")
             }
@@ -212,6 +221,7 @@ pub fn run(opts: Opts) -> Result<()> {
     let tera_enabled = file_cmd.tera;
     let verbose_enabled = opts.verbose > 0;
 
+    let mut input_path: Option<PathBuf> = None;
     let from_variant: FromVariant;
     let mut input_bytes = Vec::new();
 
@@ -219,6 +229,7 @@ pub fn run(opts: Opts) -> Result<()> {
         Some(inp_path) => {
             input_bytes = std::fs::read(&inp_path)?;
             from_variant = from.unwrap_or_else(|| FromVariant::from(&inp_path));
+            input_path = Some(inp_path);
         }
         None => {
             stdin().lock().read_to_end(&mut input_bytes)?;
@@ -250,7 +261,7 @@ pub fn run(opts: Opts) -> Result<()> {
     }
 
     if to_variant == ToVariant::Systemd {
-        let units: SystemdUnits = from_variant.deserialize_into(&input_bytes)?;
+        let units: IniFiles = from_variant.deserialize_into(&input_bytes)?;
 
         if units.0.is_empty() {
             return Err(anyhow!(
@@ -258,20 +269,53 @@ pub fn run(opts: Opts) -> Result<()> {
             ));
         }
 
-        let processed_units = process_systemd_configs(units)?;
+        let processed_units = process_systemd(units)?;
 
         if let Some(output_dir) = output {
-            let files = write_files(processed_units.0, &output_dir, utils::to_ini_string)?;
+            let files = write_files(&processed_units.0, &output_dir, serde_ini::to_string)?;
             if is_interactive() {
                 activate_units(files)?;
             }
         } else {
-            print_files(processed_units.0, utils::to_ini_string)?;
+            print_files(&processed_units.0, serde_ini::to_string)?;
         }
     } else if to_variant == ToVariant::Quadlet {
-        let _unit: serde_yaml::Value = from_variant.deserialize_into(&input_bytes)?;
+        let file: ComposeFile = from_variant.deserialize_into(&input_bytes)?;
+        let dir = input_path
+            .as_ref()
+            .and_then(|p| p.parent());
 
-        todo!();
+        let file = process_compose(file, dir)?;
+
+        let filename = if let Some(output_dir) = &output {
+            output_dir.join("compose.yaml")
+        } else {
+            let tmp_file = TempFileBuilder::new().suffix(".yaml").tempfile()?;
+            tmp_file.into_temp_path().to_path_buf()
+        };
+
+        let s = serde_yaml::to_string(&file)?;
+
+        // todo: use pere
+        if !filename.exists() || ask_confirm(
+            &format!("File '{}' already exists. Overwrite?", filename.display()),
+            true,
+        )? {
+            std::fs::write(&filename, &s)?;
+        }
+        
+        let quadlets = get_raw_quadlets(&filename)?;
+        let processed_quadlets = process_quadlets(quadlets, input_path.as_ref().and_then(|p| p.parent()))?;
+
+        if let Some(output_dir) = output {
+            let files = write_files(&processed_quadlets.0, &output_dir, serde_ini::to_string)?;
+            if is_interactive() {
+                std::env::set_current_dir(output_dir)?;
+                activate_quadlets(files)?;
+            }
+        } else {
+            print_files(&processed_quadlets.0, serde_ini::to_string)?;
+        }
     } else if let Some(output_file) = output {
         from_variant.serialize(input_bytes, |obj| {
             let buf = to_variant.to_buf(obj);

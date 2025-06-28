@@ -1,0 +1,13 @@
+---
+source: src/quadlet.rs
+expression: "serde_ini::to_string(&i).unwrap()"
+---
+[Container]
+Image=lscr.io/linuxserver/mariadb
+Pod=bookstack.pod
+EnvironmentFile=/tmp/slater/.env
+AutoUpdate=registry
+[Service]
+Restart=always
+[Unit]
+After=local-fs.target network-online.target systemd-networkd-wait-online.service

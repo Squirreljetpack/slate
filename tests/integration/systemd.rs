@@ -86,8 +86,8 @@ git_obsidian:
     let service_content = fs::read_to_string(output_path.join("git_obsidian.service"))?;
     let timer_content = fs::read_to_string(output_path.join("git_obsidian.timer"))?;
 
-    insta::assert_yaml_snapshot!("service_with_timer_service", service_content);
-    insta::assert_yaml_snapshot!("service_with_timer_timer", timer_content);
+    insta::assert_snapshot!("service_with_timer_service", service_content);
+    insta::assert_snapshot!("service_with_timer_timer", timer_content);
 
     dir.close()?;
     Ok(())

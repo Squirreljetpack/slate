@@ -11,20 +11,25 @@
 ## Supported formats
 The current input options and their inferred extensions are:
 
-| Input       | Output       | Extensions               |
-|-------------|--------------|--------------------------|
-| Json        | Json         | `.json`                  |
-|             | PrettyJson   | `.hjson`                 |
-| Yaml        | Yaml         | `.yaml`, `.yml`          |
-| Cbor        | Cbor         | `.cb`, `.cbor`           |
-| Ron         | Ron          | `.ron`                   |
-|             | PrettyRon    | `.hron`                  |
-| Toml        | Toml         | `.toml`                  |
-| Bson        | Bson         | `.bson`, `.bs`           |
-|             | Pickle       | `.pickle`, `.pkl`        |
-|             | Bincode      | `.bc`, `.bincode`        |
-|             | Postcard     | `.pc`, `.postcard`       |
-|             | Flexbuffers  | `.fb`, `.flexbuffers`    |
-|             | Systemd      | (use `--to systemd`)     |
-|             | Quadlet      | (use `--to quadlet`)     |
+| Input | Output       | Extensions               |
+|-------|--------------|--------------------------|
+| Json  | Json         | `.json`                  |
+|       | PrettyJson   | `.hjson`                 |
+| Yaml  | Yaml         | `.yaml`, `.yml`          |
+| Cbor  | Cbor         | `.cb`, `.cbor`           |
+| Ron   | Ron          | `.ron`                   |
+|       | PrettyRon    | `.hron`                  |
+| Toml  | Toml         | `.toml`                  |
+| Bson  | Bson         | `.bson`, `.bs`           |
+|       | Pickle       | `.pickle`, `.pkl`        |
+|       | Bincode      | `.bc`, `.bincode`        |
+|       | Postcard     | `.pc`, `.postcard`       |
+|       | Flexbuffers  | `.fb`, `.flexbuffers`    |
+|       | Systemd      | (use `--to systemd`)     |
+|       | Quadlet      | (use `--to quadlet`)     |
 
+
+# See also
+
+https://matduggan.com/replace-compose-with-quadlet/
+https://chasingsunlight.netlify.app/posts/homelab-with-docker-and-tailscale-2/

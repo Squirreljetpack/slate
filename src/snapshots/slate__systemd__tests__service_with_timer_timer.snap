@@ -1,0 +1,11 @@
+---
+source: src/systemd.rs
+expression: timer
+---
+Unit:
+  Description: Timer for test
+Timer:
+  OnCalendar: daily
+  Unit: test.service
+Install:
+  WantedBy: timers.target

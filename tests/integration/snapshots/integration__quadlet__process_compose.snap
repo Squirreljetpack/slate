@@ -1,0 +1,12 @@
+---
+source: tests/integration/quadlet.rs
+expression: file
+---
+services:
+  nginx:
+    image: "docker.io/library/nginx:latest"
+    volumes:
+      - "/tmp/slater/nginx.conf:/etc/nginx/nginx.conf"
+    environment:
+      - NGINX_HOST=localhost
+name: nginx

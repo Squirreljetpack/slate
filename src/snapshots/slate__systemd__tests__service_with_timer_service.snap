@@ -1,0 +1,11 @@
+---
+source: src/systemd.rs
+expression: service
+---
+Unit:
+  Description: A test service
+Service:
+  ExecStart: "/bin/echo 'Hello'"
+  Type: oneshot
+  StandardOutput: journal
+  StandardError: journal

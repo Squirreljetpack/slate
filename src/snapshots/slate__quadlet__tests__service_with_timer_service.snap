@@ -1,0 +1,8 @@
+---
+source: src/quadlet.rs
+expression: "serde_ini::to_string(&i).unwrap()"
+---
+[Pod]
+PublishPort=127.0.0.1:11004:80
+[Install]
+WantedBy=default.target

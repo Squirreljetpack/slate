@@ -1,0 +1,14 @@
+---
+source: src/quadlet.rs
+expression: "serde_ini::to_string(&i).unwrap()"
+---
+[Unit]
+Requires=bookstack-db.service
+After=local-fs.target network-online.target systemd-networkd-wait-online.service
+[Container]
+Image=lscr.io/linuxserver/bookstack
+Pod=bookstack.pod
+EnvironmentFile=/tmp/slater/.env
+AutoUpdate=registry
+[Service]
+Restart=always

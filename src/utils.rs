@@ -5,27 +5,28 @@ use std::{env, fs, io};
 use std::{collections::HashMap};
 use std::path::{PathBuf, Component, Path};
 
-
-pub fn write_files<T, E, S>(
+pub fn write_files<P, T, E, S>(
     units: &HashMap<String, T>,
-    output_dir: &PathBuf,
+    output_dir: P,
     serializer: S,
 ) -> anyhow::Result<Vec<PathBuf>>
 where
+    P: AsRef<Path>,
     T: Serialize,
     S: Fn(&T) -> Result<String, E>,
     E: std::error::Error + Send + Sync + 'static,
 {
+    let output_dir = output_dir.as_ref();
     let mut written_files = Vec::new();
     for (filename, unit) in units {
-    let string_content = serializer(&unit)
-        .map_err(|e| anyhow::Error::new(e).context(format!("Failed to serialize unit: {}", filename)))?;
+    let string_content = serializer(unit)
+        .map_err(|e| anyhow::Error::new(e).context(format!("Failed to serialize unit: {filename}")))?;
 
 
-        let file_path = output_dir.join(&filename);
+        let file_path = output_dir.join(filename);
 
         fs::write(&file_path, string_content)
-            .with_context(|| format!("Failed to write to file: {:?}", file_path))?;
+            .with_context(|| format!("Failed to write to file: {file_path:?}"))?;
         written_files.push(file_path);
     }
 
@@ -43,9 +44,9 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     let len = units.len();
-    for (i, (filename, unit)) in units.into_iter().enumerate() {
-        let string_content = serializer(&unit)
-            .map_err(|e| anyhow::Error::new(e).context(format!("Failed to serialize unit: {}", filename)))?;
+    for (i, (filename, unit)) in units.iter().enumerate() {
+        let string_content = serializer(unit)
+            .map_err(|e| anyhow::Error::new(e).context(format!("Failed to serialize unit: {filename}")))?;
 
         println!("# {filename}\n{string_content}");
         if i + 1 < len {
@@ -96,7 +97,7 @@ use demand::Confirm;
 
 #[cfg(not(test))]
 pub fn ask_confirm(prompt: &str, yes_default: bool) -> io::Result<bool> {
-    if std::env::var("SLATER_AUTO").map_or(false, |v| v.eq_ignore_ascii_case("true")) || ! is_interactive() {
+    if std::env::var("SLATER_AUTO").is_ok_and(|v| v.eq_ignore_ascii_case("true")) || ! is_interactive() {
         return Ok(yes_default);
     }
 
@@ -162,6 +163,14 @@ pub fn which(cmd: &str) -> Option<PathBuf> {
     None
 }
 
+// #[cfg(test)]
+pub fn enter_test_dir() -> std::path::PathBuf {
+    let dir = std::path::Path::new("/tmp/slater");
+    std::fs::create_dir_all(dir).unwrap();
+    std::env::set_current_dir(dir).unwrap();
+    dir.to_path_buf()
+}
+
 
 #[cfg(test)]
   mod tests {
@@ -178,14 +187,6 @@ pub fn which(cmd: &str) -> Option<PathBuf> {
           assert_eq!(normalize_path("/a/b/../c"), "/a/c");
           assert_eq!(normalize_path("a/b/c"), format!("{}/a/b/c", current_dir.to_str().unwrap()));
           assert_eq!(normalize_path("a/../b/c"), format!("{}/b/c", current_dir.to_str().unwrap()));
-          assert_eq!(normalize_path("../a/b/c"), format!("{}/a/b/c", parent_dir));
+          assert_eq!(normalize_path("../a/b/c"), format!("{parent_dir}/a/b/c"));
       }
   }
-
-// #[cfg(test)]
-pub fn enter_test_dir() -> std::path::PathBuf {
-    let dir = std::path::Path::new("/tmp/slater");
-    std::fs::create_dir_all(dir).unwrap();
-    std::env::set_current_dir(dir).unwrap();
-    dir.to_path_buf()
-}

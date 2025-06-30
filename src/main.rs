@@ -3,7 +3,7 @@ use log::LevelFilter;
 use serde::de::DeserializeOwned;
 use std::{
     io::{stdin, stdout, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str,
 };
 use tera::Tera;
@@ -45,8 +45,12 @@ pub struct FileCmd {
     pub from: Option<FromVariant>,
     #[clap(short, long, value_enum)]
     pub to: Option<ToVariant>,
-    #[clap(long)]
+
+    // also: #[clap(long, action = clap::ArgAction::Set, default_value_t = false)] for --tera=false
+    #[clap(long, action = clap::ArgAction::SetTrue, overrides_with = "no-tera")]
     pub tera: bool,
+    #[clap(long = "no-tera", action = clap::ArgAction::SetFalse, hide = true)]
+    pub no_tera: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -164,8 +168,8 @@ pub enum ToVariant {
 }
 
 impl ToVariant {
-    fn from_path(path: &PathBuf) -> Option<Self> {
-        let p = path.extension()?.to_str()?;
+    fn from_path<P: AsRef<Path>>(path: P) -> Option<Self> {
+        let p = path.as_ref().extension()?.to_str()?;
         match p {
             "bincode" | "bc" => Some(Self::Bincode),
             "bson" | "bs" => Some(Self::Bson),
@@ -191,7 +195,7 @@ impl ToVariant {
             }
             ToVariant::Bincode => bincode::serialize(&obj).unwrap(),
             ToVariant::Postcard => postcard::to_allocvec(&obj).unwrap(),
-            ToVariant::Flexbuffers => flexbuffers::to_vec(&obj).unwrap(),
+            ToVariant::Flexbuffers => flexbuffers::to_vec(obj).unwrap(),
             ToVariant::Json => serde_json::to_vec(&obj).unwrap(),
             ToVariant::PrettyJson => serde_json::to_vec_pretty(&obj).unwrap(),
             ToVariant::Yaml => serde_yaml::to_string(&obj).unwrap().into_bytes(),
@@ -218,7 +222,7 @@ pub fn run(opts: Opts) -> Result<()> {
     let from = file_cmd.from;
     let to = file_cmd.to;
     let output = file_cmd.output;
-    let tera_enabled = file_cmd.tera;
+    let mut tera_enabled = file_cmd.tera;
     let verbose_enabled = opts.verbose > 0;
 
     let mut input_path: Option<PathBuf> = None;
@@ -228,6 +232,9 @@ pub fn run(opts: Opts) -> Result<()> {
     match input {
         Some(inp_path) => {
             input_bytes = std::fs::read(&inp_path)?;
+            if inp_path.extension().and_then(|e| e.to_str()) == Some("tera") {
+                tera_enabled = true;
+            }
             from_variant = from.unwrap_or_else(|| FromVariant::from(&inp_path));
             input_path = Some(inp_path);
         }
@@ -252,10 +259,8 @@ pub fn run(opts: Opts) -> Result<()> {
         let rendered = Tera::one_off(input_str, &context, true)?;
         if verbose_enabled {
             println!("# Tera output");
-            println!("{}", rendered);
-            println!("");
-            println!("---");
-            println!("");
+            println!("{rendered}\n");
+            println!("---\n");
         }
         input_bytes = rendered.into_bytes();
     }
@@ -324,7 +329,7 @@ pub fn run(opts: Opts) -> Result<()> {
     } else {
         from_variant.serialize(input_bytes, |obj| {
             let buf = to_variant.to_buf(obj);
-            stdout().lock().write(&buf).unwrap();
+            stdout().lock().write_all(&buf).unwrap();
         })
     }
 
@@ -346,7 +351,7 @@ fn main() {
     builder.filter(None, log_level).init();
 
     if let Err(e) = run(opts) {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }

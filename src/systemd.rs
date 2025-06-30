@@ -63,7 +63,7 @@ pub fn activate_units(written_files: Vec<PathBuf>) -> anyhow::Result<()> {
                     f.file_name()
                         .unwrap()
                         .to_str()
-                        .map(|n| n == format!("{}.timer", service_base))
+                        .map(|n| n == format!("{service_base}.timer"))
                         .unwrap_or(false)
                 });
 
@@ -101,7 +101,7 @@ pub fn process_systemd(configs: IniFiles) -> Result<IniFiles> {
 
         let service_section = processed_unit.0
             .entry("Service".to_string())
-            .or_insert_with(Section::new);
+            .or_default();
 
         if timer_section_content.is_some() {
             service_section
@@ -112,7 +112,7 @@ pub fn process_systemd(configs: IniFiles) -> Result<IniFiles> {
         service_section.insert("StandardOutput".to_string(), "journal".to_string());
         service_section.insert("StandardError".to_string(), "journal".to_string());
 
-        let service_filename = format!("{}.service", unit_name);
+        let service_filename = format!("{unit_name}.service");
         output_units.insert(service_filename, processed_unit);
 
         // Create a seperate Unit for the Timer section
@@ -135,10 +135,10 @@ pub fn process_systemd(configs: IniFiles) -> Result<IniFiles> {
             // Insert defaults for [Unit]
             timer_unit_unit
                 .entry("Description".to_string())
-                .or_insert_with(|| format!("Timer for {}", unit_name));
+                .or_insert_with(|| format!("Timer for {unit_name}"));
 
             // Autodefine the other sections
-            timer_unit_timer.insert("Unit".to_string(), format!("{}.service", unit_name));
+            timer_unit_timer.insert("Unit".to_string(), format!("{unit_name}.service"));
             timer_unit_install.insert("WantedBy".to_string(), "timers.target".to_string());
 
             // Assemble the final timer file from its sections.
@@ -146,7 +146,7 @@ pub fn process_systemd(configs: IniFiles) -> Result<IniFiles> {
             timer_unit.insert("Timer".to_string(), timer_unit_timer);
             timer_unit.insert("Install".to_string(), timer_unit_install);
 
-            let timer_filename = format!("{}.timer", unit_name);
+            let timer_filename = format!("{unit_name}.timer");
             output_units.insert(timer_filename, timer_unit);
         }
     }
@@ -183,8 +183,8 @@ mod tests {
 
         let result = process_systemd(IniFiles(units)).unwrap();
 
-        let service = result.0.get("test.service").unwrap();
-        let timer = result.0.get("test.timer").unwrap();
+        let service = result.get("test.service").unwrap();
+        let timer = result.get("test.timer").unwrap();
 
         insta::assert_yaml_snapshot!("service_with_timer_service", service);
         insta::assert_yaml_snapshot!("service_with_timer_timer", timer);

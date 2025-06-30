@@ -27,21 +27,21 @@ pub fn parse_qualified_name(output: &[u8]) -> Result<String> {
         Ok(image_data) => {
             if let Some(full_ref) = image_data
                 .as_array()
-                .and_then(|i| i.get(0))
+                .and_then(|i| i.first())
                 .and_then(|i| i.get("Ref"))
                 .and_then(|i| i.as_str())
             {
                 if let Some((name, _)) = full_ref.split_once('@') {
                     return Ok(name.to_string());
                 } else {
-                    log::warn!("Could not split image ref on '@': {}", full_ref);
+                    log::warn!("Could not split image ref on '@': {full_ref}");
                 }
             } else {
                 log::warn!("Could not qualify name: 'Ref' field missing in manifest");
             }
         }
         Err(e) => {
-            log::warn!("Could not parse JSON output from docker manifest: {}", e);
+            log::warn!("Could not parse JSON output from docker manifest: {e}");
         }
     }
     Err(anyhow!("Could not parse qualified image name"))
@@ -53,7 +53,7 @@ fn get_qualified_name(name: &str) -> Result<String> {
     //     return Ok(name.into())
     // }
 
-    log::debug!("Attempting to qualify image name: {}", name);
+    log::debug!("Attempting to qualify image name: {name}");
 
     match Command::new("docker")
         .arg("manifest")
@@ -76,7 +76,7 @@ fn get_qualified_name(name: &str) -> Result<String> {
             }
         }
         Err(e) => {
-            log::error!("Failed to execute docker command: {}", e);
+            log::error!("Failed to execute docker command: {e}");
         }
     }
 
@@ -96,8 +96,7 @@ fn replace_env_vars(value: &mut Value) -> Result<()> {
                 if let Ok(env_var) = std::env::var(var_name) {
                     if ask_confirm(
                         &format!(
-                            "Replace '{}' with '{}'?",
-                            var, env_var
+                            "Replace '{var}' with '{env_var}'?"
                         ),
                         true,
                     )? {
@@ -127,7 +126,7 @@ fn replace_env_vars(value: &mut Value) -> Result<()> {
 }
 
 pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Result<ComposeFile> {
-    if file.services.len() < 1 {
+    if file.services.is_empty() {
         anyhow::bail!("No services found!");
     }
 
@@ -150,16 +149,15 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
     }
 
     // Offer to rename the primary container to "app"
-    if service_name != "app" {
-        if ask_confirm(
-            &format!("Do you want to rename service '{}' to 'app'?", service_name),
+    if service_name != "app"
+        && ask_confirm(
+            &format!("Do you want to rename service '{service_name}' to 'app'?"),
             false,
         )? {
             if let Some(service) = file.services.remove(&service_name) {
                 file.services.insert("app".to_string(), service);
             }
         }
-    }
     
 
     if let Some(dir) = initial_dir {
@@ -174,8 +172,7 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
                     if let Ok(existing_value) = std::env::var(key) {
                         if !ask_confirm(
                             &format!(
-                                "Environment variable '{}' is already set to '{}'. Overwrite with '{}' for variable substitution?",
-                                key, existing_value, value
+                                "Environment variable '{key}' is already set to '{existing_value}'. Overwrite with '{value}' for variable substitution?"
                             ),
                             false,
                         )? {
@@ -194,7 +191,7 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
         if let Some(service_map) = service.as_mapping_mut() {
 
             // Qualify image names
-            if let Some(image_val) = service_map.get_mut(&Value::String("image".to_string())) {
+            if let Some(image_val) = service_map.get_mut(Value::String("image".to_string())) {
                 if let Some(image) = image_val.as_str() {
                     if image.matches('/').count() < 2 {
                         if let Ok(image) = get_qualified_name(image) {
@@ -205,7 +202,7 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
             }
 
             // Canonicalize host and env paths
-            if let Some(volumes_val) = service_map.get_mut(&Value::String("volumes".to_string())) {
+            if let Some(volumes_val) = service_map.get_mut(Value::String("volumes".to_string())) {
                 if let Some(volumes) = volumes_val.as_sequence_mut() {
                     for volume in volumes.iter_mut() {
                         if let Some(volume_str) = volume.clone().as_str() {
@@ -228,7 +225,7 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
                 }
             }
 
-            if let Some(env_file_val) = service_map.get_mut(&Value::String("env_file".to_string())) {
+            if let Some(env_file_val) = service_map.get_mut(Value::String("env_file".to_string())) {
                 match env_file_val.clone() {
                     Value::String(s) => {
                         if s.contains('/') || s.starts_with('.') {
@@ -243,7 +240,7 @@ pub fn process_compose(mut file: ComposeFile, initial_dir: Option<&Path>) -> Res
                                 if s.contains('/') || s.starts_with('.') {
                                     let new_path = normalize_path(s);
                                     *item = Value::String(new_path.clone());
-                                    log::debug!("env_file '{}' replaced with '{}'", s, new_path);
+                                    log::debug!("env_file '{s}' replaced with '{new_path}'");
                                 }
                             }
                         }
@@ -261,8 +258,8 @@ fn parse_raw_quadlets(output: &str) -> Result<IniFiles> {
     let mut units = IniFiles::new();
     for block in output.split("\n---\n\n") {
         if let Some((first_line, rest)) = block.split_once('\n') {
-            if first_line.starts_with("# ") {
-                let key = first_line[2..].trim().to_string();
+            if let Some(stripped) = first_line.strip_prefix("# ") {
+                let key = stripped.trim().to_string();
                 let item: Ini = serde_ini::from_str(rest)?;
                 units.insert(key, item);
             }
@@ -299,7 +296,7 @@ pub fn process_quadlets(mut units: IniFiles, initial_dir: Option<&Path>) -> Resu
     for (unit_name, unit_data) in units.0.iter_mut() {
         if unit_name.ends_with(".pod") {
             if ask_confirm(
-                &format!("Add WantedBy=default.target to '{}'?", unit_name),
+                &format!("Add WantedBy=default.target to '{unit_name}'?"),
                 true,
             )? {
                 let install_section = unit_data.0.entry("Install".to_string()).or_insert_with(Section::new);
@@ -308,7 +305,7 @@ pub fn process_quadlets(mut units: IniFiles, initial_dir: Option<&Path>) -> Resu
         } else if unit_name.ends_with(".container") {
             let unit_section = unit_data.0.entry("Unit".to_string()).or_insert_with(Section::new);
             if ask_confirm(
-                &format!("Add After=local-fs.target network-online.target systemd-networkd-wait-online.service to '{}'?", unit_name),
+                &format!("Add After=local-fs.target network-online.target systemd-networkd-wait-online.service to '{unit_name}'?"),
                 true,
             )? {
                 unit_section.insert("After".to_string(), "local-fs.target network-online.target systemd-networkd-wait-online.service".to_string());
@@ -318,18 +315,17 @@ pub fn process_quadlets(mut units: IniFiles, initial_dir: Option<&Path>) -> Resu
             if let Some(dir) = initial_dir {
                 let env_file = dir.join(".env");
                 let env_file_str=env_file.to_string_lossy().to_string();
-                if env_file.exists() {
-                    if ask_confirm(
-                        &format!("Add EnvironmentFile={} to '{}'?", env_file_str, unit_name),
+                if env_file.exists()
+                    && ask_confirm(
+                        &format!("Add EnvironmentFile={env_file_str} to '{unit_name}'?"),
                         true,
                     )? {
                         container_section.insert("EnvironmentFile".to_string(), env_file_str);
                     }
-                }
             }
 
             if ask_confirm(
-                &format!("Add AutoUpdate= to '{}'?", unit_name),
+                &format!("Add AutoUpdate= to '{unit_name}'?"),
                 true,
             )? {
                 let image_name = container_section.get("Image").map(|s| s.as_str()).unwrap_or("");
@@ -349,7 +345,7 @@ pub fn activate_quadlets(files: Vec<PathBuf>) -> Result<()> {
         PathBuf::from("/etc/containers/systemd")
     } else {
         let home = std::env::var("HOME").context("HOME environment variable not set")?;
-        PathBuf::from(format!("{}/.config/containers/systemd", home))
+        PathBuf::from(format!("{home}/.config/containers/systemd"))
     };
 
     let cwd = std::env::current_dir()?;
@@ -372,8 +368,8 @@ pub fn activate_quadlets(files: Vec<PathBuf>) -> Result<()> {
     println!("Generated systemd unit files (dry run):");
     println!("{}", String::from_utf8_lossy(&output.stdout));
 
-    if &cwd != &target_dir {
-        if ask_confirm(
+    if cwd != target_dir
+        && ask_confirm(
             &format!("Create symlinks in '{}'?", target_dir.display()),
             true,
         )? {
@@ -400,7 +396,6 @@ pub fn activate_quadlets(files: Vec<PathBuf>) -> Result<()> {
                 info!("Created symlink: {} -> {}", dst.display(), src.display());
             }
         }
-    }
 
     if ask_confirm("Reload systemd and restart the services?", true)? {
         systemctl_cmd(is_root).arg("daemon-reload").status()?;
@@ -413,7 +408,7 @@ pub fn activate_quadlets(files: Vec<PathBuf>) -> Result<()> {
                 .and_then(|s| s.to_str())
                 .context("Failed to get pod file stem")?;
 
-            let pod_unit_name = format!("{}-pod.service", pod_name_stem);
+            let pod_unit_name = format!("{pod_name_stem}-pod.service");
 
             systemctl_cmd(is_root)
                 .arg("restart")
@@ -470,25 +465,25 @@ PublishPort=127.0.0.1:11004:80
     fn test_parse_raw_quadlets() {
         let result = setup_quadlets();
 
-        let app_container = result.0.get("bookstack-app.container").unwrap();
+        let app_container = result.get("bookstack-app.container").unwrap();
         assert_eq!(
-            app_container.0.get("Unit").unwrap().get("Requires"),
+            app_container.get("Unit").unwrap().get("Requires"),
             Some(&"bookstack-db.service".to_string())
         );
         assert_eq!(
-            app_container.0.get("Container").unwrap().get("Image"),
+            app_container.get("Container").unwrap().get("Image"),
             Some(&"lscr.io/linuxserver/bookstack".to_string())
         );
 
-        let db_container = result.0.get("bookstack-db.container").unwrap();
+        let db_container = result.get("bookstack-db.container").unwrap();
         assert_eq!(
-            db_container.0.get("Container").unwrap().get("Image"),
+            db_container.get("Container").unwrap().get("Image"),
             Some(&"lscr.io/linuxserver/mariadb".to_string())
         );
 
-        let pod = result.0.get("bookstack.pod").unwrap();
+        let pod = result.get("bookstack.pod").unwrap();
         assert_eq!(
-            pod.0.get("Pod").unwrap().get("PublishPort"),
+            pod.get("Pod").unwrap().get("PublishPort"),
             Some(&"127.0.0.1:11004:80".to_string())
         );
     }

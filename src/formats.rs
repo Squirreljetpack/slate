@@ -15,6 +15,16 @@ impl Ini {
     pub fn insert(&mut self, key: String, value: Section) -> Option<Section> {
         self.0.insert(key, value)
     }
+
+    pub fn get(&self, key: &str) -> Option<&Section> {
+        self.0.get(key)
+    }
+}
+
+impl Default for Ini {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,5 +38,15 @@ impl IniFiles {
 
     pub fn insert(&mut self, key: String, value: Ini) -> Option<Ini> {
         self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Ini> {
+        self.0.get(key)
+    }
+}
+
+impl Default for IniFiles {
+    fn default() -> Self {
+        Self::new()
     }
 }
